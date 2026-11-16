@@ -1,0 +1,106 @@
+name: CI/CD
+
+# Pull requests: sólo compila y prueba (CI).
+# Push a main: además crea/actualiza la infraestructura en Azure, despliega la API y la verifica (CD).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: 10.0.x
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-test:
+    name: Compilar y probar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restaurar dependencias
+        run: dotnet restore
+
+      - name: Compilar
+        run: dotnet build --no-restore -c Release
+
+      - name: Pruebas unitarias
+        run: dotnet test --no-build -c Release --logger "trx;LogFileName=resultados.trx"
+
+      - name: Publicar resultados de pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-pruebas
+          path: "**/resultados.trx"
+
+      - name: Publicar la API
+        run: dotnet publish src/AlquilerCanchas.WebAPI -c Release --no-build -o ./publicacion
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api
+          path: ./publicacion
+
+  desplegar:
+    name: Infraestructura y despliegue en Azure
+    needs: build-test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: produccion
+    # OIDC: GitHub obtiene un token de corta vida de Azure; no hay contraseñas de Azure guardadas en el repo.
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: api
+          path: ./publicacion
+
+      - name: Login en Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Crear o actualizar la infraestructura (Bicep)
+        id: infra
+        uses: azure/arm-deploy@v2
+        with:
+          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
+          template: ./infra/main.bicep
+          parameters: >-
+            sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
+            jwtKey=${{ secrets.JWT_KEY }}
+            adminEmail=${{ vars.ADMIN_EMAIL }}
+            adminPassword=${{ secrets.ADMIN_PASSWORD }}
+          failOnStdErr: false
+
+      - name: Desplegar la API en el App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ steps.infra.outputs.nombreWebApp }}
+          package: ./publicacion
+
+      - name: Verificar que la API responde
+        run: |
+          url="${{ steps.infra.outputs.urlApi }}"
+          # El primer arranque aplica migraciones y puede tardar: se reintenta hasta 10 veces.
+          for i in $(seq 1 10); do
+            codigo=$(curl -s -o /dev/null -w "%{http_code}" "$url/health" || true)
+            echo "Intento $i: HTTP $codigo"
+            [ "$codigo" = "200" ] && echo "API en línea: $url" && exit 0
+            sleep 15
+          done
+          echo "La API no respondió 200 en /health"; exit 1

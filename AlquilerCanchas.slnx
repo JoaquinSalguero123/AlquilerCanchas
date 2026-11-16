@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AlquilerCanchas.Application/AlquilerCanchas.Application.csproj" />
+    <Project Path="src/AlquilerCanchas.Domain/AlquilerCanchas.Domain.csproj" />
+    <Project Path="src/AlquilerCanchas.Infrastructure/AlquilerCanchas.Infrastructure.csproj" />
+    <Project Path="src/AlquilerCanchas.WebAPI/AlquilerCanchas.WebAPI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AlquilerCanchas.Tests/AlquilerCanchas.Tests.csproj" />
+  </Folder>
+</Solution>
