@@ -1,7 +1,7 @@
 name: CI/CD
 
 # Rama test y pull requests hacia main: sólo compila y prueba (CI).
-# Push a main: además crea/actualiza la infraestructura en Azure, despliega la API y la verifica (CD).
+# Push a main: además crea/actualiza la infraestructura en Azure, construye la imagen, despliega la API y la verifica (CD).
 on:
   push:
     branches: [main, test]
@@ -41,14 +41,6 @@ jobs:
           name: resultados-pruebas
           path: "**/resultados.trx"
 
-      - name: Publicar la API
-        run: dotnet publish src/AlquilerCanchas.WebAPI -c Release --no-build -o ./publicacion
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: api
-          path: ./publicacion
-
   desplegar:
     name: Infraestructura y despliegue en Azure
     needs: build-test
@@ -63,11 +55,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: api
-          path: ./publicacion
-
       - name: Login en Azure
         uses: azure/login@v2
         with:
@@ -75,10 +62,12 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Crear o actualizar la infraestructura (Bicep)
+      # Paso 1: todo menos la Container App (todavía no existe una imagen que correr).
+      - name: Infraestructura (Bicep, fase 1)
         id: infra
         uses: azure/arm-deploy@v2
         with:
+          deploymentName: infra-${{ github.run_number }}
           resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
           template: ./infra/main.bicep
           parameters: >-
@@ -86,19 +75,38 @@ jobs:
             jwtKey=${{ secrets.JWT_KEY }}
             adminEmail=${{ vars.ADMIN_EMAIL }}
             adminPassword=${{ secrets.ADMIN_PASSWORD }}
-          failOnStdErr: false
 
-      - name: Desplegar la API en el App Service
-        uses: azure/webapps-deploy@v3
+      - name: Login en el Container Registry
+        run: az acr login --name ${{ steps.infra.outputs.nombreAcr }}
+
+      # Se construye acá (docker en el runner) y no con "az acr build": las ACR Tasks no están
+      # disponibles en suscripciones de prueba gratuita.
+      - name: Construir y subir la imagen
+        run: |
+          imagen="${{ steps.infra.outputs.servidorAcr }}/alquilercanchas-api:${{ github.sha }}"
+          docker build -t "$imagen" .
+          docker push "$imagen"
+
+      # Paso 2: misma plantilla, ahora con la imagen: crea o actualiza la Container App.
+      - name: Desplegar la API (Bicep, fase 2)
+        id: app
+        uses: azure/arm-deploy@v2
         with:
-          app-name: ${{ steps.infra.outputs.nombreWebApp }}
-          package: ./publicacion
+          deploymentName: app-${{ github.run_number }}
+          resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
+          template: ./infra/main.bicep
+          parameters: >-
+            sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
+            jwtKey=${{ secrets.JWT_KEY }}
+            adminEmail=${{ vars.ADMIN_EMAIL }}
+            adminPassword=${{ secrets.ADMIN_PASSWORD }}
+            imagen=${{ steps.infra.outputs.servidorAcr }}/alquilercanchas-api:${{ github.sha }}
 
       - name: Verificar que la API responde
         run: |
-          url="${{ steps.infra.outputs.urlApi }}"
-          # El primer arranque aplica migraciones y puede tardar: se reintenta hasta 10 veces.
-          for i in $(seq 1 10); do
+          url="${{ steps.app.outputs.urlApi }}"
+          # El primer arranque aplica migraciones y puede tardar: se reintenta hasta 12 veces.
+          for i in $(seq 1 12); do
             codigo=$(curl -s -o /dev/null -w "%{http_code}" "$url/health" || true)
             echo "Intento $i: HTTP $codigo"
             [ "$codigo" = "200" ] && echo "API en línea: $url" && exit 0
