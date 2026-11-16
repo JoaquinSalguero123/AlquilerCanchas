@@ -1,10 +1,10 @@
 name: CI/CD
 
-# Pull requests: sólo compila y prueba (CI).
+# Rama test y pull requests hacia main: sólo compila y prueba (CI).
 # Push a main: además crea/actualiza la infraestructura en Azure, despliega la API y la verifica (CD).
 on:
   push:
-    branches: [main]
+    branches: [main, test]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -52,7 +52,8 @@ jobs:
   desplegar:
     name: Infraestructura y despliegue en Azure
     needs: build-test
-    if: github.event_name != 'pull_request'
+    # Sólo main despliega: test y los pull requests nunca tocan Azure, aunque se lance el workflow a mano.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: produccion
     # OIDC: GitHub obtiene un token de corta vida de Azure; no hay contraseñas de Azure guardadas en el repo.
