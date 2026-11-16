@@ -103,7 +103,7 @@ dotnet ef migrations add <Nombre> --project src/AlquilerCanchas.Infrastructure -
 
 ## Despliegue en Azure (CI/CD)
 
-**URL pública:** <https://ca-alqcanchas.purplewater-44d39abd.brazilsouth.azurecontainerapps.io> (Swagger en `/swagger`).
+**URL pública:** <https://ca-alqcanchas.purplewater-44d39abd.brazilsouth.azurecontainerapps.io/swagger/index.html> (Swagger en `/swagger`).
 
 La API corre como contenedor en **Azure Container Apps** (HTTPS y dominio público incluidos), con imagen en
 **Azure Container Registry**, base en **Azure SQL** y secretos en **Key Vault**. Se eligió Container Apps y no App Service
