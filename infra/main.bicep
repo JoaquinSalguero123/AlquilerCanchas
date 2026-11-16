@@ -223,5 +223,6 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = if (!empty(imagen)) {
 
 output nombreAcr string = acr.name
 output servidorAcr string = acr.properties.loginServer
-output urlApi string = !empty(imagen) ? 'https://${api.properties.configuration.ingress.fqdn}' : ''
+// El "!" es seguro: sólo se evalúa cuando imagen no está vacía, que es justo cuando la Container App existe.
+output urlApi string = !empty(imagen) ? 'https://${api!.properties.configuration.ingress.fqdn}' : ''
 output urlKeyVault string = kv.properties.vaultUri

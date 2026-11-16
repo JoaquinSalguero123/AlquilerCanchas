@@ -70,6 +70,8 @@ jobs:
           deploymentName: infra-${{ github.run_number }}
           resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
           template: ./infra/main.bicep
+          # Bicep escribe advertencias a stderr y la acción, por defecto, las toma como falla del despliegue.
+          failOnStdErr: false
           parameters: >-
             sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
             jwtKey=${{ secrets.JWT_KEY }}
@@ -95,6 +97,7 @@ jobs:
           deploymentName: app-${{ github.run_number }}
           resourceGroupName: ${{ vars.AZURE_RESOURCE_GROUP }}
           template: ./infra/main.bicep
+          failOnStdErr: false
           parameters: >-
             sqlAdminPassword=${{ secrets.SQL_ADMIN_PASSWORD }}
             jwtKey=${{ secrets.JWT_KEY }}
