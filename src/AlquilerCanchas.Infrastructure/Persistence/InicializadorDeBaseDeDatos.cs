@@ -29,7 +29,11 @@ public static class InicializadorDeBaseDeDatos
         await CrearAdministradorInicialAsync(sp, config, log, ct);
 
         if (config.GetValue("Seed:DatosDeEjemplo", false))
-            await CargarCanchasDeEjemploAsync(sp.GetRequiredService<AppDbContext>(), ct);
+        {
+            var db = sp.GetRequiredService<AppDbContext>();
+            await CargarCanchasDeEjemploAsync(db, ct);
+            await CargarReservasDeEjemploAsync(db, sp.GetRequiredService<TimeProvider>(), log, ct);
+        }
     }
 
     /// <summary>
@@ -54,6 +58,64 @@ public static class InicializadorDeBaseDeDatos
         }, ct);
         await usuarios.GuardarCambiosAsync(ct);
         log.LogInformation("Se creó el administrador inicial {Email}.", email);
+    }
+
+    /// <summary>
+    /// Clientes, reservas y pagos para poder mostrar la API con datos (agenda, saldos, estados).
+    /// Las fechas son relativas a hoy para que la agenda siempre tenga reservas próximas, y se cargan
+    /// respetando las mismas reglas que los servicios (sin superposiciones y con pagos que no superan el total),
+    /// porque el seed escribe directo en la base y nada lo valida.
+    /// Sólo corre si no hay clientes: no pisa datos cargados a mano.
+    /// </summary>
+    private static async Task CargarReservasDeEjemploAsync(
+        AppDbContext db, TimeProvider reloj, ILogger log, CancellationToken ct)
+    {
+        if (await db.Clientes.AnyAsync(ct)) return;
+
+        var canchas = await db.Canchas.ToDictionaryAsync(c => c.Nombre, ct);
+        string[] necesarias = ["Pádel 1", "Pádel 2", "Fútbol 5 A", "Tenis 1"];
+        if (necesarias.Any(n => !canchas.ContainsKey(n)))
+        {
+            // Si alguien renombró las canchas de ejemplo no se adivinan: se omite el seed de reservas.
+            log.LogWarning("No se cargaron reservas de ejemplo: faltan canchas con los nombres esperados.");
+            return;
+        }
+
+        var hoy = DateOnly.FromDateTime(reloj.GetLocalNow().DateTime);
+        var ana = new Cliente { Nombre = "Ana", Apellido = "Pérez", Email = "ana.perez@ejemplo.test", Telefono = "11 5555-0101" };
+        var bruno = new Cliente { Nombre = "Bruno", Apellido = "Gómez", Email = "bruno.gomez@ejemplo.test", Telefono = "11 5555-0102" };
+        var camila = new Cliente { Nombre = "Camila", Apellido = "Rodríguez", Email = "camila.rodriguez@ejemplo.test", Telefono = "11 5555-0103" };
+        var diego = new Cliente { Nombre = "Diego", Apellido = "Fernández", Email = "diego.fernandez@ejemplo.test", Telefono = "11 5555-0104" };
+        var lucia = new Cliente { Nombre = "Lucía", Apellido = "Martínez", Email = "lucia.martinez@ejemplo.test", Telefono = "11 5555-0105" };
+        db.Clientes.AddRange(ana, bruno, camila, diego, lucia);
+
+        Reserva R(Cliente c, string cancha, int dias, string inicio, string fin, EstadoReserva estado, params Pago[] pagos) => new()
+        {
+            Cliente = c,
+            Cancha = canchas[cancha],
+            Fecha = hoy.AddDays(dias),
+            HoraInicio = TimeOnly.Parse(inicio),
+            HoraFin = TimeOnly.Parse(fin),
+            Estado = estado,
+            Pagos = pagos
+        };
+        Pago P(decimal monto, MetodoPago metodo, int dias) =>
+            new() { Monto = monto, MetodoPago = metodo, Fecha = hoy.AddDays(dias) };
+
+        db.Reservas.AddRange(
+            // Pasadas y saldadas: muestran el historial de cobros.
+            R(ana, "Pádel 1", -3, "18:00", "19:30", EstadoReserva.Confirmada, P(27000m, MetodoPago.Efectivo, -3)),
+            R(bruno, "Fútbol 5 A", -1, "21:00", "22:00", EstadoReserva.Confirmada,
+                P(10000m, MetodoPago.Transferencia, -4), P(20000m, MetodoPago.Efectivo, -1)),
+            // Próximas: confirmada con seña (queda saldo), pendientes y una cancelada.
+            R(camila, "Pádel 1", 1, "18:00", "19:30", EstadoReserva.Confirmada, P(9000m, MetodoPago.MercadoPago, 0)),
+            R(diego, "Pádel 2", 1, "19:30", "21:00", EstadoReserva.Pendiente),
+            R(lucia, "Tenis 1", 2, "10:00", "11:00", EstadoReserva.Pendiente, P(4000m, MetodoPago.Transferencia, 0)),
+            R(bruno, "Fútbol 5 A", 2, "20:00", "21:00", EstadoReserva.Cancelada),
+            R(ana, "Pádel 1", 3, "18:00", "19:30", EstadoReserva.Pendiente));
+
+        await db.SaveChangesAsync(ct);
+        log.LogInformation("Se cargaron 5 clientes, 7 reservas y 5 pagos de ejemplo.");
     }
 
     private static async Task CargarCanchasDeEjemploAsync(AppDbContext db, CancellationToken ct)
