@@ -15,7 +15,8 @@ src/
 tests/
   AlquilerCanchas.Tests           Pruebas unitarias (xUnit + NSubstitute).
   prueba-api.sh                   Prueba de punta a punta contra una API levantada.
-infra/main.bicep                  App Service + Azure SQL + Key Vault.
+infra/main.bicep                  Container Apps + Container Registry + Azure SQL + Key Vault.
+Dockerfile                        Imagen de la API.
 .github/workflows/ci-cd.yml       Pipeline de GitHub Actions: compila, prueba, crea infraestructura y despliega.
 ```
 
@@ -98,16 +99,27 @@ dotnet ef migrations add <Nombre> --project src/AlquilerCanchas.Infrastructure -
 
 ## Despliegue en Azure (CI/CD)
 
-El pipeline hace: compilar → probar → (en `main`) crear/actualizar infraestructura con Bicep → desplegar la API →
-verificar `/health`. La API queda con su identidad administrada leyendo los secretos de Key Vault
-(`Jwt--Key`, `ConnectionStrings--DefaultConnection`, `Seed--*`); en el App Service no hay ningún secreto en claro.
+**URL pública:** <https://ca-alqcanchas.purplewater-44d39abd.brazilsouth.azurecontainerapps.io> (Swagger en `/swagger`).
+
+La API corre como contenedor en **Azure Container Apps** (HTTPS y dominio público incluidos), con imagen en
+**Azure Container Registry**, base en **Azure SQL** y secretos en **Key Vault**. Se eligió Container Apps y no App Service
+porque las suscripciones de prueba gratuita nuevas llegan con cuota 0 de App Service; la variante con App Service
+quedó en `infra/main.appservice.bicep`.
+
+El pipeline hace: compilar → probar → (en `main`) crear la infraestructura con Bicep → construir y subir la imagen de
+Docker → crear/actualizar la Container App → verificar `/health`. La API usa una identidad administrada para bajar la
+imagen y leer los secretos de Key Vault (`Jwt--Key`, `ConnectionStrings--DefaultConnection`, `Seed--*`); en la
+Container App no hay ningún secreto en claro. La rama `test` sólo corre compilación y pruebas.
 
 Configuración única:
 
-1. Crear un grupo de recursos: `az group create -n rg-alquiler-canchas -l brazilsouth`.
-2. Crear un App Registration con **credencial federada** para GitHub (OIDC), subject
-   `repo:<usuario>/<repo>:environment:produccion`, y darle rol **Owner** (o *Contributor* + *User Access Administrator*)
-   sobre el grupo de recursos: hace falta para asignar el rol de lectura de Key Vault a la API.
+1. Crear un grupo de recursos: `az group create -n rg-alquiler-canchas -l brazilsouth`, y registrar los servicios
+   `Microsoft.App`, `Microsoft.ContainerRegistry`, `Microsoft.ManagedIdentity`, `Microsoft.OperationalInsights`,
+   `Microsoft.Sql`, `Microsoft.KeyVault` (`az provider register --namespace ...`).
+2. Crear un App Registration con **credencial federada** para GitHub (OIDC). GitHub firma el token con el subject
+   `repo:<usuario>@<id>/<repo>@<id>:environment:produccion` (con los IDs numéricos): hay que registrar exactamente ese
+   (el error `AADSTS700213` del login lo muestra). Darle rol **Owner** sobre el grupo de recursos: hace falta para
+   asignar los roles de la API sobre Key Vault y el registro.
 3. En GitHub → Settings → Secrets and variables → Actions:
    - Secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `SQL_ADMIN_PASSWORD`, `JWT_KEY`, `ADMIN_PASSWORD`
    - Variables: `AZURE_RESOURCE_GROUP`, `ADMIN_EMAIL`

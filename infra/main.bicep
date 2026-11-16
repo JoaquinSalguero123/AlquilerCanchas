@@ -24,6 +24,9 @@ param imagen string = ''
 @maxValue(2)
 param replicasMinimas int = 1
 
+@description('Carga canchas, clientes, reservas y pagos de ejemplo si la base está vacía (útil para la defensa). Nunca pisa datos existentes.')
+param datosDeEjemplo bool = true
+
 @description('Usuario administrador del servidor SQL.')
 param sqlAdminUsuario string = 'sqladmin'
 
@@ -209,6 +212,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = if (!empty(imagen)) {
             { name: 'AZURE_CLIENT_ID', value: identidad.properties.clientId }
             // La API aplica las migraciones al iniciar: el deploy deja la base lista.
             { name: 'Database__MigrarAlIniciar', value: 'true' }
+            { name: 'Seed__DatosDeEjemplo', value: string(datosDeEjemplo) }
           ]
           probes: [
             { type: 'Liveness', httpGet: { path: '/health', port: 8080 }, initialDelaySeconds: 20, periodSeconds: 30 }
