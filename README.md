@@ -1,3 +1,7 @@
+# INTEGRANTES
+# Joaquín Salguero
+# Agustín Maranges
+
 # Alquiler de Canchas — API
 
 TPI de Programación IV (UTN TUP). API REST en **ASP.NET Core 10** para gestionar las canchas de un
