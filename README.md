@@ -66,7 +66,7 @@ Todos exigen `Authorization: Bearer <token>` salvo `login` y `/health`. Swagger 
 | POST / PUT / DELETE | `/api/canchas[/{id}]` | Administrador |
 | GET | `/api/reservas?fecha=&canchaId=&clienteId=` | cualquiera |
 | GET / POST / PUT | `/api/reservas[/{id}]` | cualquiera |
-| POST | `/api/reservas/{id}/confirmar` · `/cancelar` | cualquiera |
+| POST| `/api/reservas/{id}/confirmar` · `/cancelar` | cualquiera |
 | GET | `/api/reservas/{id}/clima` | cualquiera |
 | GET / POST | `/api/reservas/{id}/pagos` | cualquiera |
 | DELETE | `/api/pagos/{id}` | Administrador |
