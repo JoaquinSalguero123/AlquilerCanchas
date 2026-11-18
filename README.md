@@ -103,15 +103,18 @@ dotnet ef migrations add <Nombre> --project src/AlquilerCanchas.Infrastructure -
 
 ## Despliegue en Azure (CI/CD)
 
-**URL pública:** <https://ca-alqcanchas.purplewater-44d39abd.brazilsouth.azurecontainerapps.io/swagger/index.html> (Swagger en `/swagger`).
+> **Estado:** la infraestructura de Azure se dio de baja después de la exposición (17/11/2026), así que la URL pública
+> (`ca-alqcanchas.purplewater-44d39abd.brazilsouth.azurecontainerapps.io`) ya no responde. El proyecto quedó desplegado y
+> verificado de punta a punta (pipeline en verde, `/health`, login, datos y clima). Para volver a publicarlo hay que
+> repetir la configuración única de abajo y lanzar el workflow a mano.
 
 La API corre como contenedor en **Azure Container Apps** (HTTPS y dominio público incluidos), con imagen en
 **Azure Container Registry**, base en **Azure SQL** y secretos en **Key Vault**. Se eligió Container Apps y no App Service
 porque las suscripciones de prueba gratuita nuevas llegan con cuota 0 de App Service; la variante con App Service
 quedó en `infra/main.appservice.bicep`.
 
-El pipeline hace: compilar → probar → (en `main`) crear la infraestructura con Bicep → construir y subir la imagen de
-Docker → crear/actualizar la Container App → verificar `/health`. La API usa una identidad administrada para bajar la
+El pipeline hace: compilar → probar → (sólo lanzado a mano sobre `main`) crear la infraestructura con Bicep → construir
+y subir la imagen de Docker → crear/actualizar la Container App → verificar `/health`. La API usa una identidad administrada para bajar la
 imagen y leer los secretos de Key Vault (`Jwt--Key`, `ConnectionStrings--DefaultConnection`, `Seed--*`); en la
 Container App no hay ningún secreto en claro. La rama `test` sólo corre compilación y pruebas.
 

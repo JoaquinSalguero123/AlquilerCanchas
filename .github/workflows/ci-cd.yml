@@ -44,8 +44,10 @@ jobs:
   desplegar:
     name: Infraestructura y despliegue en Azure
     needs: build-test
-    # Sólo main despliega: test y los pull requests nunca tocan Azure, aunque se lance el workflow a mano.
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # El despliegue quedó en modo manual: la infraestructura de Azure se dio de baja, así que un push a main
+    # ya no intenta desplegar. Para volver a publicar hay que recrear los recursos y cargar los secretos
+    # (ver README) y lanzar el workflow a mano (Actions > CI/CD > Run workflow, sobre main).
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: produccion
     # OIDC: GitHub obtiene un token de corta vida de Azure; no hay contraseñas de Azure guardadas en el repo.
